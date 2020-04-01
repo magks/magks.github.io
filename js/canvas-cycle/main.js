@@ -309,6 +309,7 @@ var CanvasCycle = {
 		if (!this.inGame) {
 			this.inGame = true;
 			this.animate();
+			return
 		}
 	},
 	
@@ -409,7 +410,7 @@ var CanvasCycle = {
 			
 			let xyTuple = this.canvasWalk.directionMap[this.canvasWalk.direction]
 			//domify('payload').innerHTML = `width: ${getInnerWindowSize().width}, height: ${getInnerWindowSize().height}`
-			domify('payload').innerHTML = `dir: ${this.canvasWalk.direction}`
+			//domify('payload').innerHTML = `dir: ${this.canvasWalk.direction}`
 			this.canvasWalk.x += xyTuple[0];
 			this.canvasWalk.y += xyTuple[1];
 		}
