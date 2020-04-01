@@ -1,3 +1,6 @@
+// Modified by Max Villa
+//
+// original author credits:
 // Color Cycling in HTML5 Canvas
 // BlendShift Technology conceived, designed and coded by Joseph Huckaby
 // Copyright (c) 2001-2002, 2010 Joseph Huckaby.
@@ -19,23 +22,47 @@ jQuery.cachedScript = function( url, options ) {
 };
 
 var CanvasCycle = {
-	
+	dir: -1,
+	bmp: null,
+	clock: 0,
 	cookie: new CookieTree(),
 	ctx: null,
-	imageData: null,
-	clock: 0,
-	inGame: false,
-	bmp: null,
-	globalTimeStart: (new Date()).getTime(),
-	inited: false,
-	optTween: null,
-	winSize: null,
-	globalBrightness: 1.0,
-	lastBrightness: 0,
-	sceneIdx: -1,
-	highlightColor: -1,
 	defaultMaxVolume: 0.5,
-	
+	globalBrightness: 1.0,
+	globalTimeStart: (new Date()).getTime(),
+	highlightColor: -1,
+	imageData: null,
+	inited: false,
+	inJumbotron: false,
+	inGame: false,
+	lastBrightness: 0,
+	optTween: null,
+	sceneIdx: -1,
+	winSize: null,
+
+	canvasWalk: {
+		x: 0,
+		y: 0,
+		// compass metaphor where value is an amount to offset the (x,y) position
+		direction: 'SE', 
+		directionMap:
+		{ 
+			'N':	[0, 1], 
+			'S':	[0, -1],
+			'E':	[-1, 0],
+			'W':	[1, 0],
+
+			'NE':	[-1, 1],
+			'NW':	[1, 1],
+			'SE':	[-1, -1],
+			'SW':	[1, -1],
+
+			'STILL': [0, 0]
+		}, 
+		dirs: ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW', 'STILL'],
+		makeStep: false, // can be used to slow animation (step every other frame, etc)
+	},
+
 	settings: {
 		showOptions: false,
 		targetFPS: 60,
@@ -49,20 +76,20 @@ var CanvasCycle = {
 		width: 640,
 		optionsWidth: 0,
 		height: 480 + 40,
-		scale: 1.0
+		scale: 1
 	},
 
-	init: function() {
+	init: function(jumbo) {
 		// called when DOM is ready
 		if (!this.inited) {
+			if (jumbo)
+				this.inJumbotron = true;
 			this.inited = true;
-			$('container').style.display = 'block';
-			$('d_options').style.display = 'none';
 		
 			FrameCount.init();
 			this.handleResize();
 		
-			var pal_disp = $('palette_display');
+			var pal_disp = domify('palette_display');
 			for (var idx = 0, len = 256; idx < len; idx++) {
 				var div = document.createElement('div');
 				div._idx = idx;
@@ -77,8 +104,8 @@ var CanvasCycle = {
 			pal_disp.appendChild( div );
 		
 			// pick starting scene
-			// var initialSceneIdx = Math.floor( Math.random() * scenes.length );
-			var initialSceneIdx = 0;
+			var initialSceneIdx = Math.floor( Math.random() * scenes.length );
+			//var initialSceneIdx = 0;
 			if (location.href.match(/\bscene\=(\d+)/)) {
 				initialSceneIdx = parseInt(RegExp.$1, 10);
 			}
@@ -91,7 +118,7 @@ var CanvasCycle = {
 				html += '<option value="'+scene.name+'" '+((idx == initialSceneIdx) ? ' selected="selected"' : '')+'>'+scene.title+'</option>';
 			}
 			html += '</select>';
-			$('d_scene_selector').innerHTML = html;
+			domify('d_scene_selector').innerHTML = html;
 			
 			// read prefs from cookie
 			var prefs = this.cookie.get('settings');
@@ -108,6 +135,16 @@ var CanvasCycle = {
 			if (location.href.match(/\bsound\=(\d+)/)) {
 				this.setSound( !!parseInt(RegExp.$1, 10) );
 			}
+
+			if (this.inJumbotron) {
+				//domify('canvas_container').style.display = 'block';
+				//domify('d_options').style.display = 'none';
+				domify('d_header').style.display = 'none';
+			}
+			else {
+				domify('canvas_container').style.display = 'block';
+			}
+			domify('d_options').style.display = 'none';
 		
 			this.loadImage( scenes[initialSceneIdx].name );
 			this.sceneIdx = initialSceneIdx;
@@ -119,8 +156,8 @@ var CanvasCycle = {
 		this.sceneIdx += dir;
 		if (this.sceneIdx >= scenes.length) this.sceneIdx = 0;
 		else if (this.sceneIdx < 0) this.sceneIdx = scenes.length - 1;
-		$('fe_scene').selectedIndex = this.sceneIdx;
-		this.switchScene( $('fe_scene') );
+		domify('fe_scene').selectedIndex = this.sceneIdx;
+		this.switchScene( domify('fe_scene') );
 	},
 
 	switchScene: function(menu) {
@@ -164,6 +201,8 @@ var CanvasCycle = {
 		// load image JSON from the server
 		this.stop();
 		this.showLoading();
+
+		// for debugging
 		let getImageSuccess = function(image) {
 			alert("receieved image");
 			console.log(image);
@@ -196,15 +235,23 @@ var CanvasCycle = {
 	
 	showLoading: function() {
 		// show spinning loading indicator
-		var loading = $('d_loading');
-		loading.style.left = '' + Math.floor( ((this.contentSize.width * this.contentSize.scale) / 2) - 16 ) + 'px';
-		loading.style.top = '' + Math.floor( ((this.contentSize.height * this.contentSize.scale) / 2) - 16 ) + 'px';
+		var loading = domify('d_loading');
+		if (this.inJumbotron) {
+			loading.show();
+			loading.style.left = '0px';
+			loading.style.top = '0px';
+			loading.style.zIndex = '2';
+		}
+		else {
+			loading.style.left = '' + Math.floor( ((this.contentSize.width * this.contentSize.scale) / 2) - 16 ) + 'px';
+			loading.style.top = '' + Math.floor( ((this.contentSize.height * this.contentSize.scale) / 2) - 16 ) + 'px';
+		}
 		loading.show();
 	},
 	
 	hideLoading: function() {
 		// hide spinning loading indicator
-		$('d_loading').hide();
+		domify('d_loading').hide();
 	},
 
 	processImage: function(img) {
@@ -212,9 +259,9 @@ var CanvasCycle = {
 		this.bmp = new Bitmap(img);
 		this.bmp.optimize();
 	
-		// $('d_debug').innerHTML = img.filename;
+		// domify('d_debug').innerHTML = img.filename;
 		
-		var canvas = $('mycanvas');
+		var canvas = domify('mycanvas');
 		if (!canvas.getContext) return; // no canvas support
 	
 		if (!this.ctx) this.ctx = canvas.getContext('2d');
@@ -278,12 +325,12 @@ var CanvasCycle = {
 			if (this.settings.showOptions) {
 				for (var idx = 0, len = colors.length; idx < len; idx++) {
 					var clr = colors[idx];
-					var div = $('pal_'+idx);
+					var div = domify('pal_'+idx);
 					div.style.backgroundColor = 'rgb(' + clr.red + ',' + clr.green + ',' + clr.blue + ')';
 				}
 		
-				// if (this.clock % this.settings.targetFPS == 0) $('d_debug').innerHTML = 'FPS: ' + FrameCount.current;
-				$('d_debug').innerHTML = 'FPS: ' + FrameCount.current + ((this.highlightColor != -1) ? (' - Color #' + this.highlightColor) : '');
+				// if (this.clock % this.settings.targetFPS == 0) domify('d_debug').innerHTML = 'FPS: ' + FrameCount.current;
+				domify('d_debug').innerHTML = 'FPS: ' + FrameCount.current + ((this.highlightColor != -1) ? (' - Color #' + this.highlightColor) : '');
 			}
 	
 			this.bmp.palette.cycle( this.bmp.palette.baseColors, GetTickCount(), this.settings.speedAdjust, this.settings.blendShiftEnabled );
@@ -298,16 +345,73 @@ var CanvasCycle = {
 			this.lastBrightness = this.globalBrightness;
 			this.lastHighlightColor = this.highlightColor;
 	
-			this.ctx.putImageData( this.imageData, 0, 0 );
-	
+			//this.ctx.putImageData( this.imageData, 630, 300) ;//-60, -40);
+			this.ctx.putImageData( this.imageData, this.canvasWalk.x, this.canvasWalk.y) ;//-60, -40);
 			TweenManager.logic( this.clock );
 			this.clock++;
 			FrameCount.count();
 			this.scaleAnimate();
+
+			if (this.inJumbotron)
+				CanvasCycle.step()
+
 			if (this.inGame) {
 				// setTimeout( function() { CanvasCycle.animate(); }, 1 );
 				requestAnimationFrame( function() { CanvasCycle.animate(); } );
 			}
+		}
+	},
+
+	step: function() {
+		let hitEasternBoundary = num => this.canvasWalk.x <= -300;
+		let hitSouthernBoundary = num => this.canvasWalk.y <= -300;
+		let hitNorthernBoundary = num => this.canvasWalk.y >= -1;
+		let hitWesternBoundary = num => this.canvasWalk.x >= -1;
+		let chooseRandomDirection = dirList => dirList[Math.floor(Math.random() * dirList.length)]
+		this.canvasWalk.makeStep = ~this.canvasWalk.makeStep;
+		if (this.canvasWalk.makeStep) {
+			switch(this.canvasWalk.direction){
+				case 'N':	// [0, 1], 
+					if (hitNorthernBoundary())
+						this.canvasWalk.direction = chooseRandomDirection(['E', 'W', 'S', 'SW', 'SE'])
+					break;
+				case 'S':	// [0, -1],
+					if (hitSouthernBoundary())
+						this.canvasWalk.direction = chooseRandomDirection(['E', 'W', 'N', 'NW', 'NE'])
+					break;
+				case 'E':	// [-1, 0],
+					if (hitEasternBoundary())
+						this.canvasWalk.direction = chooseRandomDirection(['W', 'N', 'S', 'NW', 'SW'])
+					break;
+				case 'W':	// [1, 0],
+					if (hitWesternBoundary())
+						this.canvasWalk.direction = chooseRandomDirection(['E', 'N', 'S', 'NE', 'SE'])
+					break;
+				case 'NE':	// [-1, 1],
+					if (hitNorthernBoundary || hitEasternBoundary())
+						this.canvasWalk.direction = chooseRandomDirection(['S', 'W', 'SW'])
+					break;
+				case 'NW':	// [1, 1],
+					if (hitNorthernBoundary() || hitWesternBoundary())
+						this.canvasWalk.direction = chooseRandomDirection(['S', 'E', 'SE'])
+					break;
+				case 'SE':	// [-1, -1],
+					if (hitSouthernBoundary() || hitEasternBoundary())
+						this.canvasWalk.direction = chooseRandomDirection(['N', 'W', 'NW'])
+					break;
+				case 'SW':	// [1, -1],
+					if (hitSouthernBoundary() || hitWesternBoundary())
+						this.canvasWalk.direction = chooseRandomDirection(['N', 'E', 'NE'])
+					break;
+				case 'STILL': // [0, 0]
+					break;
+			}
+			
+			let xyTuple = this.canvasWalk.directionMap[this.canvasWalk.direction]
+			//domify('payload').innerHTML = `width: ${getInnerWindowSize().width}, height: ${getInnerWindowSize().height}`
+			domify('payload').innerHTML = `dir: ${this.canvasWalk.direction}`
+			this.canvasWalk.x += xyTuple[0];
+			this.canvasWalk.y += xyTuple[1];
 		}
 	},
 
@@ -327,7 +431,7 @@ var CanvasCycle = {
 				this.contentSize.scale += ((maxScale - this.contentSize.scale) / 8);
 				if (Math.abs(this.contentSize.scale - maxScale) < 0.001) this.contentSize.scale = maxScale; // close enough
 			
-				var sty = $('mycanvas').style; 
+				var sty = domify('mycanvas').style; 
 			
 				if (ua.webkit) sty.webkitTransform = 'translate3d(0px, 0px, 0px) scale('+this.contentSize.scale+')';
 				else if (ua.ff) sty.MozTransform = 'scale('+this.contentSize.scale+')';
@@ -335,7 +439,7 @@ var CanvasCycle = {
 				else sty.transform = 'scale('+this.contentSize.scale+')';
 				
 				sty.marginRight = '' + Math.floor( (this.contentSize.width * this.contentSize.scale) - this.contentSize.width ) + 'px';
-				$('d_header').style.width = '' + Math.floor(this.contentSize.width * this.contentSize.scale) + 'px';
+				domify('d_header').style.width = '' + Math.floor(this.contentSize.width * this.contentSize.scale) + 'px';
 				this.repositionContainer();
 			}
 		}
@@ -345,7 +449,7 @@ var CanvasCycle = {
 				this.contentSize.scale += ((1.0 - this.contentSize.scale) / 8);
 				if (this.contentSize.scale < 1.001) this.contentSize.scale = 1.0; // close enough
 			
-				var sty = $('mycanvas').style; 
+				var sty = domify('mycanvas').style; 
 			
 				if (ua.webkit) sty.webkitTransform = 'translate3d(0px, 0px, 0px) scale('+this.contentSize.scale+')';
 				else if (ua.ff) sty.MozTransform = 'scale('+this.contentSize.scale+')';
@@ -353,15 +457,18 @@ var CanvasCycle = {
 				else sty.transform = 'scale('+this.contentSize.scale+')';
 				
 				sty.marginRight = '' + Math.floor( (this.contentSize.width * this.contentSize.scale) - this.contentSize.width ) + 'px';
-				$('d_header').style.width = '' + Math.floor(this.contentSize.width * this.contentSize.scale) + 'px';
+				domify('d_header').style.width = '' + Math.floor(this.contentSize.width * this.contentSize.scale) + 'px';
 				this.repositionContainer();
 			}
 		}
 	},
 	
 	repositionContainer: function() {
+		// if we're in a jumbotron, 
+		if (this.inJumbotron) 
+			return 
 		// reposition container element based on inner window size
-		var div = $('container');
+		var div = domify('canvas_container');
 		if (div) {
 			this.winSize = getInnerWindowSize();
 			div.style.left = '' + Math.floor((this.winSize.width / 2) - (((this.contentSize.width * this.contentSize.scale) + this.contentSize.optionsWidth) / 2)) + 'px';
@@ -476,15 +583,15 @@ var CanvasCycle = {
 			startValue = 0;
 			if (this.optTween) startValue = this.optTween.target.value;
 			endValue = 1.0;
-			$('d_options').style.display = '';
-			$('d_options').style.opacity = startValue;
-			$('btn_options_toggle').innerHTML = '&#x00AB; Hide Options';
+			domify('d_options').style.display = '';
+			domify('d_options').style.opacity = startValue;
+			domify('btn_options_toggle').innerHTML = '&#x00AB; Hide Options';
 		}
 		else {
 			startValue = 1.0;
 			if (this.optTween) startValue = this.optTween.target.value;
 			endValue = 0;
-			$('btn_options_toggle').innerHTML = 'Show Options &#x00BB;';
+			domify('btn_options_toggle').innerHTML = 'Show Options &#x00BB;';
 		}
 	
 		this.optTween = TweenManager.tween({
@@ -494,15 +601,15 @@ var CanvasCycle = {
 			algo: 'Quadratic',
 			props: { value: endValue },
 			onTweenUpdate: function(tween) {
-				// $('d_options').style.left = '' + Math.floor(tween.target.value - 150) + 'px';
-				$('d_options').style.opacity = tween.target.value;
-				$('btn_options_toggle').style.left = '' + Math.floor(tween.target.value * 128) + 'px';
+				// domify('d_options').style.left = '' + Math.floor(tween.target.value - 150) + 'px';
+				domify('d_options').style.opacity = tween.target.value;
+				domify('btn_options_toggle').style.left = '' + Math.floor(tween.target.value * 128) + 'px';
 			
 				CanvasCycle.contentSize.optionsWidth = Math.floor( tween.target.value * 150 );
 				CanvasCycle.handleResize();
 			},
 			onTweenComplete: function(tween) {
-				if (tween.target.value == 0) $('d_options').style.display = 'none';
+				if (tween.target.value == 0) domify('d_options').style.display = 'none';
 				CanvasCycle.optTween = null;
 			},
 			category: 'options'
@@ -516,14 +623,14 @@ var CanvasCycle = {
 		if (enabled != this.settings.zoomFull) {
 			this.settings.zoomFull = enabled;
 			this.saveSettings();
-			$('btn_zoom_actual').setClass('selected', !enabled);
-			$('btn_zoom_max').setClass('selected', enabled);
+			domify('btn_zoom_actual').setClass('selected', !enabled);
+			domify('btn_zoom_max').setClass('selected', enabled);
 		}
 	},
 
 	setSound: function(enabled) {
-		$('btn_sound_on').setClass('selected', enabled);
-		$('btn_sound_off').setClass('selected', !enabled);
+		domify('btn_sound_on').setClass('selected', enabled);
+		domify('btn_sound_off').setClass('selected', !enabled);
 		this.settings.sound = enabled;
 		
 		if (this.sceneIdx > -1) {
@@ -542,26 +649,26 @@ var CanvasCycle = {
 	},
 
 	setRate: function(rate) {
-		/* $('btn_rate_30').setClass('selected', rate == 30);
-		$('btn_rate_60').setClass('selected', rate == 60);
-		$('btn_rate_90').setClass('selected', rate == 90); */
+		/* domify('btn_rate_30').setClass('selected', rate == 30);
+		domify('btn_rate_60').setClass('selected', rate == 60);
+		domify('btn_rate_90').setClass('selected', rate == 90); */
 		this.settings.targetFPS = rate;
 		this.saveSettings();
 	},
 	
 	setSpeed: function(speed) {
-		$('btn_speed_025').setClass('selected', speed == 0.25);
-		$('btn_speed_05').setClass('selected', speed == 0.5);
-		$('btn_speed_1').setClass('selected', speed == 1);
-		$('btn_speed_2').setClass('selected', speed == 2);
-		$('btn_speed_4').setClass('selected', speed == 4);
+		domify('btn_speed_025').setClass('selected', speed == 0.25);
+		domify('btn_speed_05').setClass('selected', speed == 0.5);
+		domify('btn_speed_1').setClass('selected', speed == 1);
+		domify('btn_speed_2').setClass('selected', speed == 2);
+		domify('btn_speed_4').setClass('selected', speed == 4);
 		this.settings.speedAdjust = speed;
 		this.saveSettings();
 	},
 
 	setBlendShift: function(enabled) {
-		$('btn_blendshift_on').setClass('selected', enabled);
-		$('btn_blendshift_off').setClass('selected', !enabled);
+		domify('btn_blendshift_on').setClass('selected', enabled);
+		domify('btn_blendshift_off').setClass('selected', !enabled);
 		this.settings.blendShiftEnabled = enabled;
 		this.saveSettings();
 	}

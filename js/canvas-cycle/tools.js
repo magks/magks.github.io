@@ -3,7 +3,7 @@
 // Released under the LGPL v3.0: http://www.opensource.org/licenses/lgpl-3.0.html
 // getInnerWindowSize() was grabbed from: http://www.howtocreate.co.uk/tutorials/javascript/browserwindow
 
-function $(thingy) {
+function domify(thingy) {
 	// universal DOM lookup function, extends object with hide/show/addClass/removeClass
 	// can pass in ID or actual DOM object reference
 	var obj = (typeof(thingy) == 'string') ? document.getElementById(thingy) : thingy;
